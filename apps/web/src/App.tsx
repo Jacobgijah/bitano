@@ -1,82 +1,140 @@
+// src/App.tsx — buy-flow state machine: landing -> amount -> quote -> status.
 import { useState } from 'react';
-import { createQuote, type Quote } from './api.js';
+import { AnimatePresence, motion } from 'framer-motion';
+import type { Quote } from './api.js';
+import { AppShell } from './components/AppShell.js';
+import { Landing } from './screens/Landing.js';
+import { AmountStep } from './screens/AmountStep.js';
+import { QuoteStep } from './screens/QuoteStep.js';
+import { StatusScreen } from './screens/StatusScreen.js';
+import type { Network } from './components/ui/NetworkSelect.js';
+import type { TxState } from './api.js';
 
-// First runnable slice: enter amount + address -> call POST /v1/quotes -> show the locked quote.
-// The full enter->confirm->waiting->success flow follows the mockup; this proves React->Node->Postgres.
+type Screen = 'landing' | 'amount' | 'quote' | 'status';
+
+// ---- TEMP dev preview ------------------------------------------------------
+// Visit /?preview=success (or failed | timeout | sending | waiting | refund |
+// refunded | refund_failed) to render StatusScreen in that state without the
+// backend. Lets us preview the COMPLETED success screen before Ticket 3 (real
+// Lightning send) lands. Remove this block + the previewState prop afterwards.
+const PREVIEW_MAP: Record<string, TxState> = {
+  success: 'COMPLETED',
+  completed: 'COMPLETED',
+  failed: 'PAYMENT_FAILED',
+  timeout: 'PAYMENT_TIMEOUT',
+  sending: 'SENDING',
+  waiting: 'AWAITING_PAYMENT',
+  refund: 'REFUND_INITIATED',
+  refunded: 'REFUNDED',
+  refund_failed: 'REFUND_FAILED',
+};
+
+function getPreviewState(): TxState | null {
+  if (typeof location === 'undefined') return null;
+  const key = new URLSearchParams(location.search).get('preview');
+  return key ? (PREVIEW_MAP[key] ?? null) : null;
+}
+
+const PREVIEW_QUOTE: Quote = {
+  quote_id: 'qt_preview',
+  amount_tzs: '10000',
+  sats: 3741,
+  sell_rate_tzs_per_btc: '267240000',
+  ln_address_valid: true,
+  expires_at: new Date().toISOString(),
+};
+// ---------------------------------------------------------------------------
+
 export default function App() {
+  // TEMP dev preview: short-circuit straight to a forced StatusScreen state.
+  const previewState = getPreviewState();
+  if (previewState) {
+    const reset = () => {
+      location.search = '';
+    };
+    return (
+      <AppShell>
+        <StatusScreen
+          txId="tx_preview"
+          quote={PREVIEW_QUOTE}
+          address="satoshi@coinos.io"
+          previewState={previewState}
+          onRetry={reset}
+          onStartOver={reset}
+        />
+      </AppShell>
+    );
+  }
+
+  const [screen, setScreen] = useState<Screen>('landing');
   const [amount, setAmount] = useState('10000');
+  const [network, setNetwork] = useState<Network>('MPESA');
   const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [txId, setTxId] = useState<string | null>(null);
 
-  const amountNum = Number(amount) || 0;
-
-  async function onContinue() {
-    setError(null);
+  function startOver() {
     setQuote(null);
-    setLoading(true);
-    try {
-      const q = await createQuote(amountNum, address.trim());
-      setQuote(q);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
+    setTxId(null);
+    setPhone('');
+    setScreen('amount');
   }
 
   return (
-    <div className="card">
-      <div className="brand">
-        BIT<span className="o">ANO</span>
-      </div>
-      <div className="slogan">Bitcoin mkononi mwako</div>
+    <AppShell>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={screen}
+          initial={{ opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -24 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+        >
+          {screen === 'landing' && <Landing onStart={() => setScreen('amount')} />}
 
-      <div className="amount">
-        <input
-          inputMode="numeric"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
-          aria-label="Amount in TZS"
-        />
-        <span className="cur">TZS</span>
-      </div>
-      <div className="receive">
-        {quote ? (
-          <>
-            Utapokea ≈ <b>{quote.sats.toLocaleString()}</b> sats
-          </>
-        ) : (
-          '\u00a0'
-        )}
-      </div>
+          {screen === 'amount' && (
+            <AmountStep
+              amount={amount}
+              setAmount={setAmount}
+              network={network}
+              setNetwork={setNetwork}
+              address={address}
+              setAddress={setAddress}
+              onQuoted={(q) => {
+                setQuote(q);
+                setScreen('quote');
+              }}
+              onBack={() => setScreen('landing')}
+            />
+          )}
 
-      <label htmlFor="ln">Anwani yako ya Lightning</label>
-      <input
-        id="ln"
-        className="input"
-        placeholder="juma@walletofsatoshi.com"
-        value={address}
-        spellCheck={false}
-        autoComplete="off"
-        onChange={(e) => setAddress(e.target.value)}
-      />
+          {screen === 'quote' && quote && (
+            <QuoteStep
+              quote={quote}
+              address={address}
+              phone={phone}
+              setPhone={setPhone}
+              onPaid={(id) => {
+                setTxId(id);
+                setScreen('status');
+              }}
+              onReQuote={() => setScreen('amount')}
+              onBack={() => setScreen('amount')}
+            />
+          )}
 
-      <button
-        className="cta"
-        onClick={onContinue}
-        disabled={loading || amountNum < 500 || address.length < 3}
-      >
-        {loading ? 'Inahesabu…' : 'Endelea'}
-      </button>
-
-      {error && <div className="err">{error}</div>}
-      {quote && (
-        <div className="ok">
-          Quote {quote.quote_id} — locked until {new Date(quote.expires_at).toLocaleTimeString()}
-        </div>
-      )}
-    </div>
+          {screen === 'status' && quote && txId && (
+            <StatusScreen
+              txId={txId}
+              quote={quote}
+              address={address}
+              onRetry={startOver}
+              onStartOver={startOver}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </AppShell>
   );
 }
