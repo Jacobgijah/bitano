@@ -19,4 +19,10 @@ export const config = {
   maxTzs: num('MAX_TZS', 5_000_000),
   maxTxPerDay: num('MAX_TX_PER_DAY', 10),
   maxTzsPerDay: num('MAX_TZS_PER_DAY', 2_000_000),
+
+  // ClickPesa webhook signing secret. Empty in local/dev → signature check is skipped
+  // (with a loud warning). Confirm the exact header + signing scheme against the sandbox.
+  clickpesaWebhookSecret: process.env.CLICKPESA_WEBHOOK_SECRET || '',
+  // How long we wait for a collection before a tx is treated as PAYMENT_TIMEOUT (sweeper TBD).
+  paymentTimeoutSeconds: num('PAYMENT_TIMEOUT_SECONDS', 600),
 } as const;
