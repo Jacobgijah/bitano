@@ -1,0 +1,21 @@
+{
+  "name": "bitano",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bitano — Bitcoin in your hand. Fiat→BTC bridge for Tanzania (SWAP pillar, buy direction).",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:migrate": "node scripts/migrate.mjs",
+    "dev:api": "npm run dev --workspace apps/api",
+    "dev:web": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/api && npm run build --workspace apps/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

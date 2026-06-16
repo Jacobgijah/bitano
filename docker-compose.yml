@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: bitano-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bitano
+      POSTGRES_PASSWORD: bitano
+      POSTGRES_DB: bitano
+    ports:
+      - "5432:5432"
+    volumes:
+      - bitano_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bitano -d bitano"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  bitano_pgdata:
